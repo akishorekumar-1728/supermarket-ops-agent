@@ -27,11 +27,9 @@ from tools.khata import create_credit, record_credit_payment, get_credit_balance
 from tools.analytics import daily_summary
 from tools.preferences import set_preference, get_preference
 
-# Placeholders for future document-generation tools
-def generate_invoice_pdf(**kwargs: Any) -> dict[str, Any]:
-    """Stub: will generate a GST invoice PDF. Not yet implemented."""
-    return {"status": "not_implemented", "message": "generate_invoice_pdf not yet built."}
+from documents.invoice import generate_invoice_pdf
 
+# Placeholders for future document-generation tools
 def generate_sales_deck(**kwargs: Any) -> dict[str, Any]:
     """Stub: will generate a sales summary deck. Not yet implemented."""
     return {"status": "not_implemented", "message": "generate_sales_deck not yet built."}
@@ -422,12 +420,17 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "name": "generate_invoice_pdf",
             "description": (
                 "Generate a GST-compliant PDF invoice for a finalized bill. "
-                "NOT YET IMPLEMENTED — will be added in a future phase."
+                "Can take either a numeric bill_id or an invoice_number string (e.g. 'INV-00001'). "
+                "Returns the absolute file path to the generated PDF file in generated/. "
+                "Use this whenever the user asks for a bill/invoice as a PDF or document."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "bill_id": {"type": "integer", "description": "ID of the finalized bill."},
+                    "bill_id": {
+                        "type": "string",
+                        "description": "ID of the bill (e.g. 1) or the invoice number (e.g. 'INV-00001').",
+                    },
                 },
                 "required": ["bill_id"],
             },
