@@ -28,11 +28,7 @@ from tools.analytics import daily_summary
 from tools.preferences import set_preference, get_preference
 
 from documents.invoice import generate_invoice_pdf
-
-# Placeholders for future document-generation tools
-def generate_sales_deck(**kwargs: Any) -> dict[str, Any]:
-    """Stub: will generate a sales summary deck. Not yet implemented."""
-    return {"status": "not_implemented", "message": "generate_sales_deck not yet built."}
+from documents.sales_deck import generate_sales_deck
 
 
 # ── callable registry: name -> Python function ───────────────────────────
@@ -441,13 +437,18 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         "function": {
             "name": "generate_sales_deck",
             "description": (
-                "Generate a sales summary presentation/report. "
-                "NOT YET IMPLEMENTED — will be added in a future phase."
+                "Generate a PowerPoint (.pptx) sales analysis deck summarizing sales performance, "
+                "GST tax collections, payment mode breakdown with pie chart, top selling products bar chart, "
+                "stock health alerts, and automated business insights. "
+                "Use when the user asks for a sales deck, presentation, or weekly/monthly analysis."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "date": {"type": "string", "description": "Date in YYYY-MM-DD format."},
+                    "period": {
+                        "type": "string",
+                        "description": "Time window: 'day', 'week', 'month', or 'all'. Defaults to 'week'.",
+                    },
                 },
                 "required": [],
             },
