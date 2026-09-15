@@ -4,10 +4,12 @@ tools/billing.py
 Draft billing and invoice management tools for the Supermarket Ops Agent.
 
 Operations on bills:
-- create_bill(conn, payment_mode=None)
+- create_bill(bill_id, payment_mode=None, ...)
 - add_bill_item(bill_id, product_query, quantity, conn)
 - remove_bill_item(bill_id, product_query, conn)
 - update_bill_item(bill_id, product_query, new_quantity, conn)
+- finalize_bill(bill_id, idempotency_key, payment_mode=None, payment_reference=None, conn=None)
+- get_bill(bill_id, conn)
 
 Stock isolation guarantee:
 Stock quantities are NOT touched during draft creation, item additions,
@@ -30,6 +32,14 @@ class BillNotFoundError(LookupError):
 
 class BillStateError(ValueError):
     """Raised when attempting an illegal operation on a finalized or void bill."""
+
+
+class InsufficientStockError(ValueError):
+    """Raised when an item cannot be fulfilled due to insufficient stock."""
+
+
+class BelowCostSaleError(ValueError):
+    """Raised when an item is priced below cost price."""
 
 
 def _check_bill_active(bill_id: int, conn: sqlite3.Connection) -> sqlite3.Row:
@@ -103,34 +113,40 @@ def _resolve_single_product(product_query: str, conn: sqlite3.Connection) -> dic
 
 
 def create_bill(
-    conn: sqlite3.Connection,
+    conn: sqlite3.Connection | None = None,
     payment_mode: str | None = None,
     *,
     idempotency_key: str | None = None,
     invoice_number: str | None = None,
+    **kwargs: Any,
 ) -> int:
     """
     Create a new draft bill.
+
+    Accepts connection either as first positional argument or keyword argument 'conn'.
 
     Parameters:
         conn: Open sqlite3.Connection.
         payment_mode: Optional payment mode ('cash', 'upi', 'card', 'credit').
         idempotency_key: Optional uniqueness key. Defaults to a random UUID.
-        invoice_number: Optional custom invoice number. Defaults to 'INV-{short-uuid}'.
+        invoice_number: Optional custom invoice number. Defaults to 'DRAFT-{short-uuid}'.
 
     Returns:
         bill_id (int) of the created draft bill.
     """
+    c = conn or kwargs.get("conn")
+    if c is None:
+        raise ValueError("create_bill requires an open sqlite3.Connection (conn).")
+
     if idempotency_key is None:
-        idempotency_key = f"bill-{uuid.uuid4()}"
+        idempotency_key = f"draft-{uuid.uuid4()}"
 
     if invoice_number is None:
-        # Generate an invoice number prefix
         short_id = uuid.uuid4().hex[:8].upper()
-        invoice_number = f"INV-{short_id}"
+        invoice_number = f"INV-DRAFT-{short_id}"
 
-    with conn:
-        cur = conn.execute(
+    with c:
+        cur = c.execute(
             """
             INSERT INTO bills (
                 invoice_number,
@@ -257,7 +273,6 @@ def remove_bill_item(
     product = _resolve_single_product(product_query, conn)
     product_id = product["id"]
 
-    # Verify item exists in this bill
     existing = conn.execute(
         "SELECT id FROM bill_items WHERE bill_id = ? AND product_id = ?",
         (bill_id, product_id),
@@ -365,6 +380,200 @@ def update_bill_item(
         "total": total,
         "bill_totals": totals,
     }
+
+
+def _generate_sequential_invoice_number(conn: sqlite3.Connection) -> str:
+    """
+    Generate the next sequential invoice number format 'INV-YYYYMMDD-XXXX'
+    or 'INV-XXXXX' based on the max existing finalized invoice.
+    """
+    # Find max invoice number with prefix 'INV-'
+    row = conn.execute(
+        """
+        SELECT invoice_number
+        FROM bills
+        WHERE status = 'finalized' AND invoice_number LIKE 'INV-%'
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+
+    next_num = 1
+    if row and row["invoice_number"]:
+        inv_str = row["invoice_number"]
+        parts = inv_str.split("-")
+        try:
+            next_num = int(parts[-1]) + 1
+        except ValueError:
+            next_num = 1
+
+    return f"INV-{next_num:05d}"
+
+
+def finalize_bill(
+    bill_id: int,
+    idempotency_key: str,
+    payment_mode: str | None = None,
+    payment_reference: str | None = None,
+    conn: sqlite3.Connection | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """
+    Finalize a draft bill with hard business guards:
+    - Transactional atomicity (BEGIN IMMEDIATE) to prevent concurrent race conditions.
+    - Idempotency: if already finalized with this idempotency_key, returns the existing bill.
+    - Oversell guard: checks every item against available stock. If any item exceeds stock,
+      rejects entire finalize with InsufficientStockError and leaves stock unchanged.
+    - Below-cost guard: checks unit_price >= cost_price for every item. Rejects with BelowCostSaleError.
+    - Decrements stock for each item atomically.
+    - Generates sequential invoice_number, sets status='finalized', finalized_at, and commits.
+
+    Parameters:
+        bill_id: Target bill ID to finalize.
+        idempotency_key: Unique client request identifier.
+        payment_mode: Optional payment mode ('cash', 'upi', 'card', 'credit').
+        payment_reference: Optional payment reference.
+        conn: Open sqlite3.Connection (can be passed positional or keyword).
+
+    Returns:
+        Full finalized bill details dict.
+    """
+    c = conn or kwargs.get("conn")
+    if c is None:
+        raise ValueError("finalize_bill requires an open sqlite3.Connection (conn).")
+
+    if not idempotency_key or not str(idempotency_key).strip():
+        raise ValidationError("idempotency_key must be provided and non-empty.")
+
+    idempotency_key = str(idempotency_key).strip()
+
+    # Step 1: Idempotency check BEFORE acquiring immediate lock
+    # If a bill with this idempotency_key is ALREADY finalized, return it immediately.
+    existing_finalized = c.execute(
+        "SELECT id FROM bills WHERE idempotency_key = ? AND status = 'finalized'",
+        (idempotency_key,),
+    ).fetchone()
+    if existing_finalized:
+        return get_bill(existing_finalized["id"], c)
+
+    # Step 2: Begin IMMEDIATE transaction to lock database against concurrent writers
+    c.execute("BEGIN IMMEDIATE")
+    try:
+        # Re-check idempotency under lock in case another transaction just committed it
+        existing_finalized = c.execute(
+            "SELECT id FROM bills WHERE idempotency_key = ? AND status = 'finalized'",
+            (idempotency_key,),
+        ).fetchone()
+        if existing_finalized:
+            c.execute("COMMIT")
+            return get_bill(existing_finalized["id"], c)
+
+        # Retrieve bill under lock
+        bill = c.execute("SELECT * FROM bills WHERE id = ?", (bill_id,)).fetchone()
+        if not bill:
+            raise BillNotFoundError(f"Bill with ID {bill_id} not found.")
+
+        if bill["status"] == "finalized":
+            # If bill was already finalized under another key, raise error
+            raise BillStateError(
+                f"Bill {bill_id} is already finalized (invoice: {bill['invoice_number']})."
+            )
+        if bill["status"] == "void":
+            raise BillStateError(f"Cannot finalize void bill {bill_id}.")
+
+        # Retrieve bill items
+        items = c.execute(
+            """
+            SELECT bi.*, p.name, p.sku, p.cost_price AS master_cost_price
+            FROM bill_items bi
+            JOIN products p ON p.id = bi.product_id
+            WHERE bi.bill_id = ?
+            """,
+            (bill_id,),
+        ).fetchall()
+
+        if not items:
+            raise ValidationError(f"Cannot finalize bill {bill_id}: bill has no items.")
+
+        # Aggregate requested quantities per product
+        # (in case the same product was added multiple times across lines)
+        product_req_qty: dict[int, float] = {}
+        for it in items:
+            pid = it["product_id"]
+            product_req_qty[pid] = product_req_qty.get(pid, 0.0) + float(it["quantity"])
+
+        # Validate below-cost guard for all line items
+        for it in items:
+            unit_price = float(it["unit_price"])
+            cost_price = float(it["cost_price"])
+            if unit_price < cost_price:
+                raise BelowCostSaleError(
+                    f"Item {it['name']!r} (SKU: {it['sku']}) selling price ({unit_price}) "
+                    f"is below its cost price ({cost_price}). Sale rejected."
+                )
+
+        # Validate stock availability for every product in the bill
+        for pid, req_qty in product_req_qty.items():
+            stock_row = c.execute(
+                "SELECT quantity FROM stock WHERE product_id = ?", (pid,)
+            ).fetchone()
+            current_stock = float(stock_row["quantity"]) if stock_row else 0.0
+
+            if req_qty > current_stock:
+                shortfall = req_qty - current_stock
+                # Find product name
+                prod_info = next(it for it in items if it["product_id"] == pid)
+                raise InsufficientStockError(
+                    f"Cannot finalize bill: Insufficient stock for {prod_info['name']!r} "
+                    f"(SKU: {prod_info['sku']}). Requested: {req_qty}, "
+                    f"Available: {current_stock}, Shortfall: {shortfall}."
+                )
+
+        # All checks passed! Decrement stock atomically
+        for pid, req_qty in product_req_qty.items():
+            c.execute(
+                """
+                UPDATE stock
+                SET quantity = quantity - ?,
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                WHERE product_id = ?
+                """,
+                (req_qty, pid),
+            )
+
+        # Generate sequential invoice number
+        invoice_number = _generate_sequential_invoice_number(c)
+
+        # Determine effective payment mode
+        eff_payment_mode = payment_mode or bill["payment_mode"] or "cash"
+
+        # Update bill header to 'finalized'
+        c.execute(
+            """
+            UPDATE bills
+            SET invoice_number = ?,
+                status = 'finalized',
+                payment_mode = ?,
+                payment_reference = ?,
+                finalized_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+                idempotency_key = ?
+            WHERE id = ?
+            """,
+            (
+                invoice_number,
+                eff_payment_mode,
+                payment_reference,
+                idempotency_key,
+                bill_id,
+            ),
+        )
+
+        c.execute("COMMIT")
+    except Exception:
+        c.execute("ROLLBACK")
+        raise
+
+    return get_bill(bill_id, c)
 
 
 def get_bill(bill_id: int, conn: sqlite3.Connection) -> dict[str, Any]:
