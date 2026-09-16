@@ -101,7 +101,7 @@ ollama pull llama3.2:3b
 ```env
 OLLAMA_HOST=http://localhost:11434
 OLLAMA_MODEL=llama3.2:3b
-TELEGRAM_BOT_TOKEN=8732475243:AAE6g9ol_CcprHdFcADoZjtBTeX5B0iPFPg
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 ```
 
 ### 4. Seed Database & Run Tests
