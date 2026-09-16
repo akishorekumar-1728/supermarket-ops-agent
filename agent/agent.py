@@ -333,7 +333,7 @@ def chat_turn(
                 user_message,
                 generation_config=genai.types.GenerationConfig(
                     temperature=0.0,
-                    max_output_tokens=512,
+                    max_output_tokens=300,
                 ),
             )
             break  # success — exit key rotation loop

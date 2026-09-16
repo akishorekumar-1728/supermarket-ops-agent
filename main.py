@@ -288,7 +288,14 @@ def main() -> None:
     init_database()
     start_health_check_server()
 
-    app = Application.builder().token(token).build()
+    app = (
+        Application.builder()
+        .token(token)
+        .connect_timeout(10)
+        .read_timeout(30)
+        .write_timeout(30)
+        .build()
+    )
 
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
@@ -299,7 +306,7 @@ def main() -> None:
 
     print(f"Starting Supermarket Ops Telegram Bot (@supermarket_ops_nebula_bot)...")
     print(f"AI Model: {GEMINI_MODEL} (Google Gemini) | DB: {DB_PATH}")
-    app.run_polling(drop_pending_updates=False)
+    app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
