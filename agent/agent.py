@@ -23,10 +23,15 @@ from typing import Any, Callable
 
 from agent.system_prompt import SYSTEM_PROMPT
 from agent.tools_registry import TOOL_FUNCTIONS, TOOL_SCHEMAS
+from agent.intent_router import route as route_tools
+from agent.fast_path import try_fast_path
 
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
-# Default model: qwen3:4b (or fallback to llama3.2:3b / configured model)
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:4b")
+COMPACT_SYSTEM_PROMPT = """You are an Indian kirana supermarket Ops Assistant.
+Call appropriate tools for real data, billing, stock, and khata.
+Never invent data. Use ₹ for rupees. Reply concisely like a practical assistant."""
+
+OLLAMA_HOST  = os.environ.get("OLLAMA_HOST",  "http://localhost:11434").rstrip("/")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
 
 
 class OllamaConnectionError(RuntimeError):
@@ -92,12 +97,12 @@ def chat_turn(
     """
     if conversation_history is None:
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT}
+            {"role": "system", "content": COMPACT_SYSTEM_PROMPT}
         ]
     else:
         messages = list(conversation_history)
         if not messages or messages[0].get("role") != "system":
-            messages.insert(0, {"role": "system", "content": SYSTEM_PROMPT})
+            messages.insert(0, {"role": "system", "content": COMPACT_SYSTEM_PROMPT})
 
     messages.append({"role": "user", "content": user_message})
 
@@ -122,17 +127,39 @@ def chat_turn(
         messages.append({"role": "assistant", "content": greeting_reply})
         return greeting_reply, messages, []
 
+    # 1. Zero-latency fast path for common kirana operations (< 5ms)
+    fast_res = try_fast_path(user_message, conn=conn)
+    if fast_res is not None:
+        reply_text, tools_called = fast_res
+        messages.append({"role": "assistant", "content": reply_text})
+        return reply_text, messages, tools_called
+
     executed_tools: list[dict[str, Any]] = []
 
+    # Pick only the schemas relevant to this message intent (massive token reduction)
+    # On first iteration use routed schemas; on subsequent iterations (tool results fed back)
+    # use full schemas in case the model needs a follow-up tool from a different group.
+    first_turn = True
+
     for _ in range(max_iterations):
+        if first_turn:
+            active_schemas = route_tools(user_message, TOOL_SCHEMAS)
+            first_turn = False
+        else:
+            active_schemas = TOOL_SCHEMAS  # full set for multi-step reasoning
+
         payload = {
-            "model": model,
+            "model":  model,
             "messages": messages,
-            "tools": TOOL_SCHEMAS,
+            "tools":  active_schemas,
             "stream": False,
             "options": {
-                "temperature": temperature,
-                "think": False,      # disable qwen3 extended thinking (speeds up tool calls)
+                "temperature":  0,          # greedy — fastest, most deterministic
+                "think":        False,       # disable qwen3 extended thinking
+                "num_thread":   16,          # use all CPU cores
+                "num_ctx":      2048,        # enough for 2-3 tool result roundtrips
+                "num_predict":  256,         # cap output tokens for tool calls
+                "keep_alive":   "10m",       # keep model hot in RAM between turns
             },
         }
 
