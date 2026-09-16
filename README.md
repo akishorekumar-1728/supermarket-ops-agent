@@ -4,10 +4,14 @@ An autonomous AI operations assistant for Indian kirana stores and supermarkets.
 
 [![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-blue?logo=github)](https://github.com/akishorekumar-1728/supermarket-ops-agent)
 [![Telegram Bot](https://img.shields.io/badge/Telegram-@supermarket__ops__nebula__bot-2CA5E0?logo=telegram)](https://t.me/supermarket_ops_nebula_bot)
+[![Submission Report](https://img.shields.io/badge/Submission-Official%20Report-orange?logo=readme)](submission/SUBMISSION_REPORT.md)
 [![Python Version](https://img.shields.io/badge/Python-3.11-brightgreen?logo=python)](https://python.org)
 [![Gemini AI](https://img.shields.io/badge/Google-Gemini%203.6%20Flash-4285F4?logo=google)](https://aistudio.google.com)
 [![Render](https://img.shields.io/badge/Deployed%20on-Render-46E3B7?logo=render)](https://render.com)
 [![Database](https://img.shields.io/badge/SQLite-WAL%20Mode-lightgrey?logo=sqlite)](https://sqlite.org)
+
+> 📌 **Official Submission Package**:  
+> For full technical grading criteria, harness rationale, capability surface, hard problem solutions, and sample PDF/PPTX outputs, read the [**Project Submission Report (`submission/SUBMISSION_REPORT.md`)**](submission/SUBMISSION_REPORT.md).
 
 ---
 
