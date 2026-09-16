@@ -101,6 +101,27 @@ def chat_turn(
 
     messages.append({"role": "user", "content": user_message})
 
+    user_clean = user_message.strip().lower().rstrip("!.,?")
+    GREETINGS = {
+        "hi", "hello", "hey", "namaste", "vanakkam", "halo",
+        "good morning", "good afternoon", "good evening",
+        "who are you", "what can you do", "help", "start", "/start", "/help", "/new"
+    }
+    if user_clean in GREETINGS:
+        greeting_reply = (
+            "Namaste! 🙏 I am your Supermarket Operations Assistant.\n\n"
+            "Here are some things you can ask me to do:\n"
+            "• 📦 Stock Arrivals: '50 packets of Maggi came in, cost ₹12, MRP ₹14'\n"
+            "• 🔍 Check Inventory: 'how much sugar is left?' or 'what is low on stock?'\n"
+            "• 🧾 Create Bills: 'make a bill: 2kg sugar, 1 atta 5kg, 4 Maggi, UPI'\n"
+            "• 📖 Khata Ledger: 'put ₹500 on Ramesh's credit' or 'Ramesh's balance?'\n"
+            "• 📄 PDF Invoices: 'send me that bill as a PDF'\n"
+            "• 📊 PPTX Sales Reports: 'make this week's sales analysis deck'\n\n"
+            "How can I help your store right now?"
+        )
+        messages.append({"role": "assistant", "content": greeting_reply})
+        return greeting_reply, messages, []
+
     executed_tools: list[dict[str, Any]] = []
 
     for _ in range(max_iterations):
@@ -140,6 +161,11 @@ def chat_turn(
         if not tool_calls:
             # Final text response received
             content = msg.get("content", "")
+            if "didn't specify a function" in content or (content.strip().startswith("{") and '"name":' in content):
+                content = (
+                    "How can I help you with your supermarket? You can ask me to record new stock, "
+                    "prepare a bill, check customer khata balance, or generate sales reports and invoices."
+                )
             return content, messages, executed_tools
 
         # Process all tool calls in this turn
