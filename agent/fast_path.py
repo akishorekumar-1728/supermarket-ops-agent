@@ -173,13 +173,13 @@ def try_fast_path(
             pass
 
     # ─────────────────────────────────────────────────────────────────────────
-    # 7. PDF invoice request: "send me that bill as a PDF" / "bill pdf" / "invoice pdf"
+    # 7. PDF invoice request: "send me that bill as a PDF" / "bill pdf" / "give a pdf"
     # ─────────────────────────────────────────────────────────────────────────
-    if re.search(r"(?:send\s+(?:me\s+)?(?:that\s+)?bill\s+(?:as\s+a\s+)?pdf|bill\s+pdf|invoice\s+pdf|download\s+pdf)", msg_lower):
+    if "pdf" in msg_lower or (("invoice" in msg_lower or "bill" in msg_lower) and any(w in msg_lower for w in ("send", "give", "download", "get", "print", "share"))):
         cur = conn.cursor()
         row = cur.execute("SELECT id, invoice_number, status FROM bills WHERE status = 'finalized' ORDER BY id DESC LIMIT 1").fetchone()
         if not row:
-            draft_row = cur.execute("SELECT id, invoice_number FROM bills WHERE status = 'draft' ORDER BY id DESC LIMIT 1").fetchone()
+            draft_row = cur.execute("SELECT id, invoice_number, status FROM bills WHERE status = 'draft' ORDER BY id DESC LIMIT 1").fetchone()
             if draft_row:
                 idem_key = f"sale-{uuid.uuid4()}"
                 finalize_bill(draft_row["id"], idempotency_key=idem_key, conn=conn)
@@ -249,23 +249,27 @@ def try_fast_path(
             pass
 
     # ─────────────────────────────────────────────────────────────────────────
-    # 11. Finalize bill: "finalize" / "finalize bill"
+    # 11. Finalize bill: "finalize" / "finalize bill" / "yes" / "done"
     # ─────────────────────────────────────────────────────────────────────────
-    if re.search(r"^(?:finalize|finalize\s+bill|finalise|checkout|complete\s+sale)$", msg_lower):
+    if re.search(r"^(?:finalize|finalize\s+bill|finalise|checkout|complete\s+sale|yes|yep|confirm|done|ok|okay|no|none|that's all)$", msg_lower):
         cur = conn.cursor()
         row = cur.execute("SELECT id FROM bills WHERE status = 'draft' ORDER BY id DESC LIMIT 1").fetchone()
         if row:
             try:
                 idem_key = f"sale-{uuid.uuid4()}"
                 fin = finalize_bill(row["id"], idempotency_key=idem_key, conn=conn)
+                pdf_path = generate_invoice_pdf(row["id"], conn=conn)
                 reply = (
                     f"🧾 Bill finalized successfully!\n"
                     f"• Invoice No: **{fin['invoice_number']}**\n"
                     f"• Grand Total: **₹{fin['grand_total']:.2f}** (Payment: {fin['payment_mode'].upper()})\n"
-                    f"• Items: {len(fin.get('items', []))}\n"
-                    f"• Stock has been deducted from inventory."
+                    f"• Items: {len(fin.get('items', []))}\n\n"
+                    f"📄 Attached your official GST Tax Invoice PDF below."
                 )
-                return reply, [{"tool": "finalize_bill", "arguments": {"bill_id": row["id"], "idempotency_key": idem_key}, "result": fin}]
+                return reply, [
+                    {"tool": "finalize_bill", "arguments": {"bill_id": row["id"], "idempotency_key": idem_key}, "result": fin},
+                    {"tool": "generate_invoice_pdf", "arguments": {"bill_id": str(row["id"])}, "result": pdf_path},
+                ]
             except Exception as exc:
                 reply = f"⚠️ Could not finalize bill: {str(exc)}"
                 return reply, [{"tool": "finalize_bill", "arguments": {"bill_id": row["id"]}, "result": {"error": str(exc)}}]
@@ -273,7 +277,7 @@ def try_fast_path(
     # ─────────────────────────────────────────────────────────────────────────
     # 13. Create multi-item bill: "make a bill: 2kg sugar, 4 Maggi, UPI"
     # ─────────────────────────────────────────────────────────────────────────
-    m = re.search(r"^(?:make\s+a\s+bill|create\s+a\s+bill|create\s+bill|make\s+bill|bill):\s*(.+)$", msg_lower)
+    m = re.search(r"^(?:make\s+(?:a\s+)?bill|create\s+(?:a\s+)?bill|bill)\s*:?\s*(.+)$", msg_lower)
     if m:
         body = m.group(1).strip()
         parts = [p.strip() for p in body.split(",") if p.strip()]
