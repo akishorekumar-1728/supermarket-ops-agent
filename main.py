@@ -237,6 +237,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         conn.close()
 
 
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
+
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Supermarket Ops Bot is running OK\n")
+
+    def log_message(self, format, *args):
+        pass  # suppress HTTP access logs to keep Telegram bot logs clean
+
+
+def start_health_check_server() -> None:
+    """Start a lightweight background HTTP server on $PORT for cloud platforms (e.g. Render)."""
+    port_str = os.environ.get("PORT")
+    if port_str:
+        try:
+            port = int(port_str)
+            server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+            t = threading.Thread(target=server.serve_forever, daemon=True)
+            t.start()
+            logger.info(f"Render health check HTTP server listening on port {port}")
+        except Exception as exc:
+            logger.warning(f"Could not start HTTP health server on port {port_str}: {exc}")
+
+
 def main() -> None:
     """Run the Telegram Bot application."""
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -248,6 +277,7 @@ def main() -> None:
         sys.exit(1)
 
     init_database()
+    start_health_check_server()
 
     app = Application.builder().token(token).build()
 
