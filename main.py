@@ -285,6 +285,7 @@ def main() -> None:
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("reset", reset_command))
     app.add_handler(CommandHandler("clear", reset_command))
+    app.add_handler(CommandHandler("new", reset_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print(f"Starting Supermarket Ops Telegram Bot (@supermarket_ops_nebula_bot)...")
