@@ -89,13 +89,17 @@ def _rotate_key() -> str:
     return new_key
 
 
-def _is_quota_error(exc: Exception) -> bool:
-    """Check if the exception is a quota/rate-limit error."""
+def _should_rotate_key(exc: Exception) -> bool:
+    """Check if the exception warrants rotating to the next API key."""
     msg = str(exc).lower()
-    return any(kw in msg for kw in [
-        "quota", "rate limit", "resource_exhausted", "429",
-        "too many requests", "ratelimitexceeded",
-    ])
+    error_type = type(exc).__name__.lower()
+    keywords = [
+        "quota", "rate", "limit", "exhausted", "429", "too many",
+        "resource_exhausted", "unavailable", "503", "500", "overloaded",
+        "permission", "forbidden", "invalid", "expired", "blocked", "tokens",
+        "tpm", "rpm", "rpd"
+    ]
+    return any(k in msg or k in error_type for k in keywords)
 
 
 # ── Tool schema builder ───────────────────────────────────────────────────────
@@ -345,7 +349,7 @@ def chat_turn(
             )
             break  # success — exit key rotation loop
         except Exception as exc:
-            if _is_quota_error(exc) and attempt < max_key_attempts - 1:
+            if _should_rotate_key(exc) and attempt < max_key_attempts - 1:
                 _rotate_key()
                 time.sleep(0.5)
                 continue
@@ -399,8 +403,8 @@ def chat_turn(
                 response = chat.send_message(function_responses)
                 break
             except Exception as exc:
-                if _is_quota_error(exc) and attempt < max_key_attempts - 1:
-                    # Rebuild chat session with new key
+                if _should_rotate_key(exc) and attempt < max_key_attempts - 1:
+                    # Rebuild chat session with new key preserving history
                     new_key = _rotate_key()
                     genai.configure(api_key=new_key)
                     gemini_model_obj = genai.GenerativeModel(
@@ -408,7 +412,8 @@ def chat_turn(
                         system_instruction=COMPACT_SYSTEM_PROMPT,
                         tools=_GEMINI_TOOLS,
                     )
-                    chat = gemini_model_obj.start_chat(history=history_for_gemini)
+                    active_hist = chat.history if hasattr(chat, "history") and chat.history else history_for_gemini
+                    chat = gemini_model_obj.start_chat(history=active_hist)
                     time.sleep(0.5)
                     continue
                 raise OllamaConnectionError(
