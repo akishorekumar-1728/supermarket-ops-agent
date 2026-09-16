@@ -57,8 +57,9 @@ logging.basicConfig(
 logger = logging.getLogger("supermarket_ops_bot")
 
 DB_PATH = Path(os.environ.get("DB_PATH", ROOT / "data" / "supermarket.db"))
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+if GEMINI_MODEL in ("gemini-2.0-flash", "gemini-2.5-flash"):
+    GEMINI_MODEL = "gemini-3.6-flash"
 
 # In-memory per-chat conversation history: chat_id -> list of message dicts
 CHAT_HISTORIES: dict[int, list[dict]] = {}
@@ -247,8 +248,34 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Supermarket Ops Bot is running OK\n")
 
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+
     def log_message(self, format, *args):
         pass  # suppress HTTP access logs to keep Telegram bot logs clean
+
+
+def _keep_alive_pinger() -> None:
+    """Periodically ping this service's own URL so Render free tier never goes to sleep."""
+    import time
+    import urllib.request
+
+    time.sleep(30)
+    url = os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("RENDER_URL")
+    if not url:
+        return
+
+    logger.info(f"Keep-alive self-pinger active for: {url}")
+    while True:
+        try:
+            time.sleep(600)  # Ping every 10 minutes (Render sleeps at 15 minutes)
+            req = urllib.request.Request(f"{url.rstrip('/')}/", headers={"User-Agent": "RenderKeepAlive/1.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                pass
+        except Exception as exc:
+            logger.debug(f"Keep-alive self-ping: {exc}")
 
 
 def start_health_check_server() -> None:
@@ -261,6 +288,10 @@ def start_health_check_server() -> None:
             t = threading.Thread(target=server.serve_forever, daemon=True)
             t.start()
             logger.info(f"Render health check HTTP server listening on port {port}")
+
+            # Also start keep-alive thread to keep Render awake
+            kp = threading.Thread(target=_keep_alive_pinger, daemon=True)
+            kp.start()
         except Exception as exc:
             logger.warning(f"Could not start HTTP health server on port {port_str}: {exc}")
 

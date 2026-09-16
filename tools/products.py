@@ -246,6 +246,8 @@ def get_product(
         raise ValidationError("get_product: query must not be empty")
 
     q = str(query).strip()
+    import re
+    q_norm = re.sub(r'(\d+)\s*(kg|g|gm|pkt|pkts|litre|litres|l|ml)\b', r'\1\2', q, flags=re.IGNORECASE)
 
     rows = conn.execute(
         """
@@ -254,9 +256,10 @@ def get_product(
         JOIN   stock s ON s.product_id = p.id
         WHERE  LOWER(p.sku) = LOWER(?)
            OR  LOWER(p.name) LIKE LOWER(?)
+           OR  LOWER(p.name) LIKE LOWER(?)
         ORDER  BY p.name
         """,
-        (q, f"%{q}%"),
+        (q, f"%{q}%", f"%{q_norm}%"),
     ).fetchall()
 
     return [_row_to_dict(r) for r in rows]

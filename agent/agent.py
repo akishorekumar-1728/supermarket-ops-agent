@@ -34,7 +34,14 @@ COMPACT_SYSTEM_PROMPT = """You are an Indian kirana supermarket Ops Assistant.
 Call appropriate tools for real data, billing, stock, and khata.
 Never invent data. Use ₹ for rupees. Reply concisely like a practical assistant."""
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+# Auto-migrate deprecated 2.0-flash or 2.5-flash to working 3.6-flash
+if GEMINI_MODEL in ("gemini-2.0-flash", "gemini-2.5-flash"):
+    GEMINI_MODEL = "gemini-3.6-flash"
+
+# Backward-compatibility alias for test suites
+OLLAMA_MODEL = GEMINI_MODEL
+OLLAMA_HOST = ""
 
 # ── Multi-key rotation support ────────────────────────────────────────────────
 def _load_api_keys() -> list[str]:

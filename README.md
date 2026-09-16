@@ -129,7 +129,7 @@ TELEGRAM_BOT_TOKEN=<your_telegram_bot_token>
 # Multiple keys comma-separated — auto-rotates on quota exhaustion
 GEMINI_API_KEYS=your_key_1,your_key_2,your_key_3
 
-GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MODEL=gemini-3.6-flash
 ```
 > ⚠️ `.env` is gitignored — your keys are **never** pushed to GitHub.
 

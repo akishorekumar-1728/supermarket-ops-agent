@@ -32,7 +32,7 @@ from documents.sales_deck import generate_sales_deck
 
 
 def resolve_product_name(query: str, conn: sqlite3.Connection) -> str:
-    """Resolve a user's short product name (e.g. 'maggi', 'atta', 'butter') to the exact catalog product name."""
+    """Resolve a user's short product name (e.g. 'maggi', 'atta', 'butter', 'aashirvaad atta 5 kg') to exact catalog name."""
     cur = conn.cursor()
     q = query.strip()
     # Check if a custom store preference alias exists
@@ -40,15 +40,35 @@ def resolve_product_name(query: str, conn: sqlite3.Connection) -> str:
     if pref_row and pref_row["value"]:
         q = pref_row["value"].strip()
 
+    # 1. Exact match on SKU or Name
     row = cur.execute("SELECT name FROM products WHERE LOWER(sku) = LOWER(?) OR LOWER(name) = LOWER(?)", (q, q)).fetchone()
     if row:
         return row["name"]
-    row = cur.execute("SELECT name FROM products WHERE LOWER(name) LIKE LOWER(?) ORDER BY LENGTH(name) ASC LIMIT 1", (f"{q}%",)).fetchone()
+
+    # 2. Normalize space between numbers and units: "5 kg" -> "5kg", "70 g" -> "70g", "1 l" -> "1l"
+    q_norm = re.sub(r'(\d+)\s*(kg|g|gm|pkt|pkts|litre|litres|l|ml)\b', r'\1\2', q, flags=re.IGNORECASE)
+    row = cur.execute("SELECT name FROM products WHERE LOWER(name) = LOWER(?)", (q_norm,)).fetchone()
     if row:
         return row["name"]
-    row = cur.execute("SELECT name FROM products WHERE LOWER(name) LIKE LOWER(?) ORDER BY LENGTH(name) ASC LIMIT 1", (f"%{q}%",)).fetchone()
+
+    # 3. Starts-with or Substring match with normalized query
+    row = cur.execute("SELECT name FROM products WHERE LOWER(name) LIKE LOWER(?) ORDER BY LENGTH(name) ASC LIMIT 1", (f"{q_norm}%",)).fetchone()
     if row:
         return row["name"]
+    row = cur.execute("SELECT name FROM products WHERE LOWER(name) LIKE LOWER(?) ORDER BY LENGTH(name) ASC LIMIT 1", (f"%{q_norm}%",)).fetchone()
+    if row:
+        return row["name"]
+
+    # 4. Keyword token matching: if all key words (e.g. 'aashirvaad', 'atta') appear in a product name
+    stop_words = {"packets", "packet", "pkt", "pkts", "kg", "g", "gm", "of", "item", "bag", "bags", "a", "an", "the"}
+    words = [w for w in re.split(r'[\s\-]+', q_norm.lower()) if w and w not in stop_words]
+    if words:
+        all_prods = cur.execute("SELECT name FROM products").fetchall()
+        for p in all_prods:
+            p_name_lower = p["name"].lower()
+            if all(w in p_name_lower for w in words):
+                return p["name"]
+
     return q
 
 
