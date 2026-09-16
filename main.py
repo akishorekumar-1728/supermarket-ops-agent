@@ -58,7 +58,7 @@ logger = logging.getLogger("supermarket_ops_bot")
 
 DB_PATH = Path(os.environ.get("DB_PATH", ROOT / "data" / "supermarket.db"))
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:4b")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
 
 # In-memory per-chat conversation history: chat_id -> list of message dicts
 CHAT_HISTORIES: dict[int, list[dict]] = {}
@@ -236,7 +236,7 @@ def main() -> None:
 
     print(f"Starting Supermarket Ops Telegram Bot (@supermarket_ops_nebula_bot)...")
     print(f"Model: {OLLAMA_MODEL} | Host: {OLLAMA_HOST} | DB: {DB_PATH}")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling(drop_pending_updates=False)
 
 
 if __name__ == "__main__":
