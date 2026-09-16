@@ -57,6 +57,7 @@ logging.basicConfig(
 logger = logging.getLogger("supermarket_ops_bot")
 
 DB_PATH = Path(os.environ.get("DB_PATH", ROOT / "data" / "supermarket.db"))
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
 if GEMINI_MODEL in ("gemini-2.0-flash", "gemini-2.5-flash"):
     GEMINI_MODEL = "gemini-3.6-flash"
@@ -306,15 +307,14 @@ def main() -> None:
         )
         sys.exit(1)
 
-    if not GEMINI_API_KEY:
-        # Also accept multi-key format
-        multi_keys = os.environ.get("GEMINI_API_KEYS", "").strip()
-        if not multi_keys:
-            print(
-                "ERROR: GEMINI_API_KEY or GEMINI_API_KEYS environment variable not set!\n"
-                "Get free keys at https://aistudio.google.com/"
-            )
-            sys.exit(1)
+    multi_keys = os.environ.get("GEMINI_API_KEYS", "").strip()
+    single_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not multi_keys and not single_key:
+        print(
+            "ERROR: GEMINI_API_KEYS or GEMINI_API_KEY environment variable not set!\n"
+            "Get free keys at https://aistudio.google.com/"
+        )
+        sys.exit(1)
 
     init_database()
     start_health_check_server()
