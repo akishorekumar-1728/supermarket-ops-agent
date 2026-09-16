@@ -24,6 +24,7 @@ from typing import Any
 
 from tools.gst import calculate_gst
 from tools.products import ProductNotFoundError, ValidationError, get_product
+from tools.preferences import get_preference, PREF_DEFAULT_PAYMENT_MODE
 
 
 class BillNotFoundError(LookupError):
@@ -137,6 +138,9 @@ def create_bill(
     c = conn or kwargs.get("conn")
     if c is None:
         raise ValueError("create_bill requires an open sqlite3.Connection (conn).")
+
+    if payment_mode is None:
+        payment_mode = get_preference(PREF_DEFAULT_PAYMENT_MODE, default=None, conn=c)
 
     if idempotency_key is None:
         idempotency_key = f"draft-{uuid.uuid4()}"
@@ -545,7 +549,8 @@ def finalize_bill(
         invoice_number = _generate_sequential_invoice_number(c)
 
         # Determine effective payment mode
-        eff_payment_mode = payment_mode or bill["payment_mode"] or "cash"
+        default_pref_mode = get_preference(PREF_DEFAULT_PAYMENT_MODE, default=None, conn=c)
+        eff_payment_mode = payment_mode or bill["payment_mode"] or default_pref_mode or "cash"
 
         # Update bill header to 'finalized'
         c.execute(

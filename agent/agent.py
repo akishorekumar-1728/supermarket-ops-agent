@@ -13,6 +13,7 @@ Features:
 """
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import sqlite3
@@ -44,14 +45,16 @@ def _execute_tool_call(
 
     args = dict(arguments)
     try:
-        res = func(**args, conn=conn)
-        return {"status": "success", "result": res}
-    except TypeError:
-        try:
+        sig = inspect.signature(func)
+        has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+        if not has_var_kw:
+            args = {k: v for k, v in args.items() if k in sig.parameters}
+
+        if "conn" in sig.parameters or has_var_kw:
+            res = func(**args, conn=conn)
+        else:
             res = func(**args)
-            return {"status": "success", "result": res}
-        except Exception as exc:
-            return {"status": "error", "error_type": type(exc).__name__, "message": str(exc)}
+        return {"status": "success", "result": res}
     except Exception as exc:
         return {"status": "error", "error_type": type(exc).__name__, "message": str(exc)}
 
@@ -108,6 +111,7 @@ def chat_turn(
             "stream": False,
             "options": {
                 "temperature": temperature,
+                "think": False,      # disable qwen3 extended thinking (speeds up tool calls)
             },
         }
 

@@ -176,12 +176,22 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "description": (
                 "Create a new draft bill. Returns the bill_id. "
                 "Always call this first before adding items. "
-                "Optionally supply payment_mode (cash/upi/card/credit)."
+                "IMPORTANT: Only pass payment_mode if the shopkeeper explicitly stated "
+                "a payment method in this conversation (e.g. 'cash', 'UPI', 'card'). "
+                "If the shopkeeper did not mention payment method, OMIT the payment_mode "
+                "argument entirely — the system will use the stored default preference."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "payment_mode": {"type": "string", "description": "cash, upi, card, or credit (optional)."},
+                    "payment_mode": {
+                        "type": "string",
+                        "description": (
+                            "ONLY include if the shopkeeper explicitly said which payment method to use "
+                            "in this conversation. Valid values: cash, upi, card, credit. "
+                            "OMIT this argument if payment method was not explicitly stated."
+                        ),
+                    },
                 },
                 "required": [],
             },
@@ -259,10 +269,9 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "bill_id":          {"type": "integer", "description": "ID of the draft bill to finalize."},
-                    "idempotency_key":  {"type": "string", "description": "Unique key for this finalize attempt (e.g. 'sale-2024-09-15-001')."},
-                    "payment_mode":     {"type": "string", "description": "cash, upi, card, or credit."},
-                    "payment_reference":{"type": "string", "description": "UPI transaction ID, card last-4, etc. (optional)."},
+                    "bill_id":           {"type": "integer", "description": "ID of the draft bill to finalize."},
+                    "idempotency_key":   {"type": "string", "description": "Unique key for this finalize attempt (e.g. 'sale-2024-09-15-001')."},
+                    "payment_reference": {"type": "string", "description": "UPI transaction ID, card last-4, etc. (optional)."},
                 },
                 "required": ["bill_id", "idempotency_key"],
             },
@@ -374,16 +383,16 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         "function": {
             "name": "set_preference",
             "description": (
-                "Save a persistent app preference as a key-value pair. "
-                "Well-known keys: 'default_payment_mode', 'store_name', 'gst_state_code'. "
-                "Product aliases use 'product_alias:{alias}' -> SKU or product name. "
-                "Settings survive app restarts."
+                "Save or update a persistent shop setting/preference in the database. "
+                "Call this IMMEDATELY whenever the user gives a preference rule, instruction, or setting like "
+                "'always assume UPI', 'set default payment mode to cash', or 'remember that alias X means Y'. "
+                "For default payment mode, use key='default_payment_mode' and value='upi', 'cash', 'card', or 'credit'."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "key":   {"type": "string", "description": "Preference key (e.g. 'default_payment_mode', 'product_alias:atta')."},
-                    "value": {"type": "string", "description": "Preference value (e.g. 'upi', 'AASH-ATTA-5KG')."},
+                    "value": {"type": "string", "description": "Preference value (e.g. 'upi', 'cash', 'AASH-ATTA-5KG')."},
                 },
                 "required": ["key", "value"],
             },
