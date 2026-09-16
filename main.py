@@ -297,6 +297,23 @@ def start_health_check_server() -> None:
             logger.warning(f"Could not start HTTP health server on port {port_str}: {exc}")
 
 
+async def post_init_setup(application: Application) -> None:
+    """Enforce clean kirana assistant description on bot startup."""
+    try:
+        clean_desc = (
+            "Supermarket & Kirana Store Ops Assistant. "
+            "Manage product inventory, GST billing, customer credit (khata), "
+            "and business sales analytics through natural language."
+        )
+        await application.bot.set_my_description(description=clean_desc)
+        await application.bot.set_my_short_description(
+            short_description="Supermarket Ops Assistant: billing, stock, khata & GST invoices."
+        )
+        logger.info("Enforced clean bot description and short description.")
+    except Exception as exc:
+        logger.warning(f"Could not enforce bot description on startup: {exc}")
+
+
 def main() -> None:
     """Run the Telegram Bot application."""
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -325,6 +342,7 @@ def main() -> None:
         .connect_timeout(10)
         .read_timeout(30)
         .write_timeout(30)
+        .post_init(post_init_setup)
         .build()
     )
 
