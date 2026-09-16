@@ -98,10 +98,14 @@ ollama pull llama3.2:3b
 ```
 
 ### 3. Configure Environment (`.env`)
+Create `.env` (or copy from `.env.example`):
+```bash
+cp .env.example .env
+```
 ```env
 OLLAMA_HOST=http://localhost:11434
 OLLAMA_MODEL=llama3.2:3b
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+TELEGRAM_BOT_TOKEN=<YOUR_TELEGRAM_BOT_TOKEN>
 ```
 
 ### 4. Seed Database & Run Tests
