@@ -57,8 +57,8 @@ logging.basicConfig(
 logger = logging.getLogger("supermarket_ops_bot")
 
 DB_PATH = Path(os.environ.get("DB_PATH", ROOT / "data" / "supermarket.db"))
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
 
 # In-memory per-chat conversation history: chat_id -> list of message dicts
 CHAT_HISTORIES: dict[int, list[dict]] = {}
@@ -178,8 +178,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             user_text,
             conversation_history=history,
             conn=conn,
-            model=OLLAMA_MODEL,
-            host=OLLAMA_HOST,
+            model=GEMINI_MODEL,
             timeout=300,
         )
         CHAT_HISTORIES[chat_id] = updated_history
@@ -224,10 +223,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                         )
 
     except OllamaConnectionError as e:
-        logger.error(f"Ollama connection error: {e}")
+        logger.error(f"Gemini API error: {e}")
         await update.message.reply_text(
-            f"⚠️ Could not reach local Ollama server at `{OLLAMA_HOST}`.\n\n"
-            f"Please ensure Ollama is running (`ollama serve`) and model `{OLLAMA_MODEL}` is pulled.",
+            f"⚠️ Could not reach Gemini API.\n\n"
+            f"Please ensure `GEMINI_API_KEY` is set correctly in your environment.",
             parse_mode="Markdown",
         )
     except Exception as e:
@@ -272,7 +271,14 @@ def main() -> None:
     if not token:
         print(
             "ERROR: TELEGRAM_BOT_TOKEN environment variable not set!\n"
-            "Please configure TELEGRAM_BOT_TOKEN in your .env file or environment."
+            "Please configure TELEGRAM_BOT_TOKEN in your environment."
+        )
+        sys.exit(1)
+
+    if not GEMINI_API_KEY:
+        print(
+            "ERROR: GEMINI_API_KEY environment variable not set!\n"
+            "Get a free key at https://aistudio.google.com/"
         )
         sys.exit(1)
 
@@ -289,7 +295,7 @@ def main() -> None:
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print(f"Starting Supermarket Ops Telegram Bot (@supermarket_ops_nebula_bot)...")
-    print(f"Model: {OLLAMA_MODEL} | Host: {OLLAMA_HOST} | DB: {DB_PATH}")
+    print(f"AI Model: {GEMINI_MODEL} (Google Gemini) | DB: {DB_PATH}")
     app.run_polling(drop_pending_updates=False)
 
 
