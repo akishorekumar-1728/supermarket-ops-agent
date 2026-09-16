@@ -276,11 +276,14 @@ def main() -> None:
         sys.exit(1)
 
     if not GEMINI_API_KEY:
-        print(
-            "ERROR: GEMINI_API_KEY environment variable not set!\n"
-            "Get a free key at https://aistudio.google.com/"
-        )
-        sys.exit(1)
+        # Also accept multi-key format
+        multi_keys = os.environ.get("GEMINI_API_KEYS", "").strip()
+        if not multi_keys:
+            print(
+                "ERROR: GEMINI_API_KEY or GEMINI_API_KEYS environment variable not set!\n"
+                "Get free keys at https://aistudio.google.com/"
+            )
+            sys.exit(1)
 
     init_database()
     start_health_check_server()

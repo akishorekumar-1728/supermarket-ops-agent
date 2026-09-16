@@ -105,9 +105,15 @@ cp .env.example .env
 ```
 ```env
 TELEGRAM_BOT_TOKEN=<YOUR_TELEGRAM_BOT_TOKEN>
-GEMINI_API_KEY=<YOUR_GEMINI_API_KEY>
+
+# Add multiple Gemini API keys (comma-separated) for automatic rotation
+# when one key's quota is exhausted. Single key also works fine.
+GEMINI_API_KEYS=your_key_1,your_key_2,your_key_3,...
+
 GEMINI_MODEL=gemini-2.0-flash
 ```
+
+> **💡 Multi-Key Rotation**: The bot automatically rotates to the next API key when it detects a quota/rate-limit error. Add as many free keys as you want from [aistudio.google.com](https://aistudio.google.com/).
 
 ### 4. Seed Database & Run Tests
 ```bash
@@ -134,7 +140,7 @@ Open Telegram and message **[@supermarket_ops_nebula_bot](https://t.me/supermark
 4. Set **Start Command**: `python main.py`
 5. Add **Environment Variables** in the Render dashboard:
    - `TELEGRAM_BOT_TOKEN` = your bot token
-   - `GEMINI_API_KEY` = your Gemini API key
+   - `GEMINI_API_KEYS` = `key1,key2,key3,...` (all your keys, comma-separated)
    - `GEMINI_MODEL` = `gemini-2.0-flash`
 6. Click **Deploy** ✅
 
