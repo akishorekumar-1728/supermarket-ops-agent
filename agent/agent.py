@@ -115,13 +115,18 @@ def chat_turn(
     if user_clean in GREETINGS:
         greeting_reply = (
             "Namaste! 🙏 I am your Supermarket Operations Assistant.\n\n"
-            "Here are some things you can ask me to do:\n"
-            "• 📦 Stock Arrivals: '50 packets of Maggi came in, cost ₹12, MRP ₹14'\n"
-            "• 🔍 Check Inventory: 'how much sugar is left?' or 'what is low on stock?'\n"
-            "• 🧾 Create Bills: 'make a bill: 2kg sugar, 1 atta 5kg, 4 Maggi, UPI'\n"
-            "• 📖 Khata Ledger: 'put ₹500 on Ramesh's credit' or 'Ramesh's balance?'\n"
-            "• 📄 PDF Invoices: 'send me that bill as a PDF'\n"
-            "• 📊 PPTX Sales Reports: 'make this week's sales analysis deck'\n\n"
+            "Here is what you can ask me to do:\n"
+            "• 📦 *Receive stock:* '50 packets of Maggi came in, cost ₹12, MRP ₹14'\n"
+            "• 🏷️ *Add product:* 'new item: Amul Butter 100g, GST 12%, MRP ₹62'\n"
+            "• 🧾 *Cut a bill:* 'make a bill: 2kg sugar, 1 Aashirvaad atta 5kg, 4 Maggi, UPI'\n"
+            "• ✏️ *Edit bill:* 'drop the butter, make it 6 Maggi'\n"
+            "• 🔍 *Stock query:* 'how much sugar is left?'\n"
+            "• ⚠️ *Low-stock:* 'what\\'s running out?'\n"
+            "• 📖 *Khata credit:* 'put ₹500 on Ramesh\\'s credit' • 'Ramesh paid ₹300' • 'Ramesh\\'s balance?'\n"
+            "• 📊 *Daily close:* 'today\\'s sales?' or 'close the day'\n"
+            "• 📄 *Invoice PDF:* 'send me that bill as a PDF'\n"
+            "• 📈 *Analysis deck:* 'make this week\\'s sales analysis deck'\n"
+            "• ⚙️ *Set preference:* 'always assume UPI unless I say cash' • 'default atta = Aashirvaad 5kg'\n\n"
             "How can I help your store right now?"
         )
         messages.append({"role": "assistant", "content": greeting_reply})

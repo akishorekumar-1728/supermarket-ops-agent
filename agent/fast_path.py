@@ -35,6 +35,11 @@ def resolve_product_name(query: str, conn: sqlite3.Connection) -> str:
     """Resolve a user's short product name (e.g. 'maggi', 'atta', 'butter') to the exact catalog product name."""
     cur = conn.cursor()
     q = query.strip()
+    # Check if a custom store preference alias exists
+    pref_row = cur.execute("SELECT value FROM preferences WHERE key = LOWER(?)", (f"product_alias:{q.lower()}",)).fetchone()
+    if pref_row and pref_row["value"]:
+        q = pref_row["value"].strip()
+
     row = cur.execute("SELECT name FROM products WHERE LOWER(sku) = LOWER(?) OR LOWER(name) = LOWER(?)", (q, q)).fetchone()
     if row:
         return row["name"]
@@ -85,9 +90,9 @@ def try_fast_path(
                 pass
 
     # ─────────────────────────────────────────────────────────────────────────
-    # 2. Low stock alert: "what is low on stock?" / "low stock" / "what to order"
+    # 2. Low stock alert: "what's running out?" / "what is low on stock?"
     # ─────────────────────────────────────────────────────────────────────────
-    if re.search(r"^(?:what is low on stock|low stock|low stock items|what needs to be ordered|items low on stock|what is low)$", msg_lower):
+    if re.search(r"^(?:what(?:'s|\s+is)?\s+running\s+out|running\s+out|what is low on stock|low stock|low stock items|what needs to be ordered|items low on stock|what is low)\??$", msg_lower):
         try:
             items = get_low_stock(conn=conn)
             if not items:
@@ -208,9 +213,9 @@ def try_fast_path(
             pass
 
     # ─────────────────────────────────────────────────────────────────────────
-    # 9. Daily sales summary: "today's sales" / "today sales report" / "daily summary"
+    # 9. Daily sales summary / Daily close: "today's sales?" / "close the day"
     # ─────────────────────────────────────────────────────────────────────────
-    if re.search(r"^(?:today'?s?\s+sales(?:\s+report|\s+summary)?|daily\s+summary|daily\s+report|how much (?:did )?we sell today\??)$", msg_lower):
+    if re.search(r"^(?:today'?s?\s+sales(?:\s+report|\s+summary|\?)?|close\s+the\s+day|daily\s+close|day\s+close|daily\s+summary|daily\s+report|how much (?:did )?we sell today\??)$", msg_lower):
         try:
             summary = daily_summary(conn=conn)
             total = summary.get("total_sales", 0.0)
@@ -219,11 +224,14 @@ def try_fast_path(
             cgst = summary.get("cgst_total", 0.0)
             sgst = summary.get("sgst_total", 0.0)
             top_prods = summary.get("top_products", [])
+            modes_info = summary.get("payment_modes", {})
+            modes_str = ", ".join([f"{k.upper()}: ₹{v.get('total_amount', 0):.2f}" for k, v in modes_info.items()]) if modes_info else "None yet"
 
             lines = [
-                f"📊 *Daily Sales Summary:*",
+                f"📊 *Daily Close & Sales Summary:*",
                 f"• Total Revenue: **₹{total:.2f}** ({bills_cnt} bills)",
-                f"• GST Collected: **₹{gst:.2f}** (CGST: ₹{cgst:.2f}, SGST: ₹{sgst:.2f})",
+                f"• Total Tax Collected: **₹{gst:.2f}** (CGST: ₹{cgst:.2f}, SGST: ₹{sgst:.2f})",
+                f"• Payment Breakdown: **{modes_str}**",
             ]
             if top_prods:
                 lines.append("• Top Products:")
@@ -236,7 +244,7 @@ def try_fast_path(
             pass
 
     # ─────────────────────────────────────────────────────────────────────────
-    # 10. Preference: "always assume UPI unless I say cash"
+    # 10. Preference: "always assume UPI unless I say cash" or "default atta = Aashirvaad 5kg"
     # ─────────────────────────────────────────────────────────────────────────
     if re.search(r"always\s+assume\s+(upi|cash|card|credit)", msg_lower):
         m = re.search(r"always\s+assume\s+(upi|cash|card|credit)", msg_lower)
@@ -245,6 +253,18 @@ def try_fast_path(
             set_preference(PREF_DEFAULT_PAYMENT_MODE, mode, conn=conn)
             reply = f"⚙️ Saved preference! Default payment mode is now set to **{mode.upper()}** for all future bills."
             return reply, [{"tool": "set_preference", "arguments": {"key": PREF_DEFAULT_PAYMENT_MODE, "value": mode}, "result": mode}]
+        except Exception:
+            pass
+
+    m_pref = re.search(r"^(?:default|alias)\s+(.+?)\s*=\s*(.+)$", msg_lower)
+    if m_pref:
+        alias_key = m_pref.group(1).strip().lower()
+        alias_val = m_pref.group(2).strip()
+        try:
+            pref_k = f"product_alias:{alias_key}"
+            set_preference(pref_k, alias_val, conn=conn)
+            reply = f"⚙️ Saved preference! Default for *'{alias_key}'* is now set to *'{alias_val}'* across all chats."
+            return reply, [{"tool": "set_preference", "arguments": {"key": pref_k, "value": alias_val}, "result": alias_val}]
         except Exception:
             pass
 
@@ -327,7 +347,51 @@ def try_fast_path(
                 pass
 
     # ─────────────────────────────────────────────────────────────────────────
-    # 14. Update quantity: "make it 6 Maggi" / "change Maggi to 6"
+    # 14. Composite bill edit: "drop the butter, make it 6 Maggi"
+    # ─────────────────────────────────────────────────────────────────────────
+    if ("drop" in msg_lower or "remove" in msg_lower) and ("make it" in msg_lower or "change" in msg_lower or "update" in msg_lower):
+        parts = [p.strip() for p in msg_lower.split(",") if p.strip()]
+        cur = conn.cursor()
+        row = cur.execute("SELECT id FROM bills WHERE status = 'draft' ORDER BY id DESC LIMIT 1").fetchone()
+        if row and len(parts) >= 2:
+            tools_called = []
+            action_notes = []
+            final_tot = 0.0
+            for pt in parts:
+                m_drop = re.search(r"^(?:drop\s+the|remove\s+the|remove|drop)\s+(.+?)$", pt)
+                if m_drop:
+                    it_drop = resolve_product_name(m_drop.group(1).strip(), conn=conn)
+                    try:
+                        res = remove_bill_item(row["id"], it_drop, conn=conn)
+                        final_tot = res.get("bill_totals", {}).get("grand_total", 0.0)
+                        tools_called.append({"tool": "remove_bill_item", "arguments": {"bill_id": row["id"], "product_query": it_drop}, "result": res})
+                        action_notes.append(f"• Removed *{it_drop}*")
+                    except Exception:
+                        pass
+                m_qty = re.search(r"^(?:make\s+it|change\s+it\s+to|change|update)\s+(\d+(?:\.\d+)?)\s*(?:kg|pkts?|packets?)?\s*(.+)$", pt)
+                if not m_qty:
+                    m_qty = re.search(r"^(?:make\s+it|change|update)\s+(.+?)\s+(?:to\s+)?(\d+(?:\.\d+)?)\s*(?:kg|pkts?|packets?)?$", pt)
+                    if m_qty:
+                        it_qty = m_qty.group(1).strip()
+                        n_qty = float(m_qty.group(2))
+                else:
+                    n_qty = float(m_qty.group(1))
+                    it_qty = m_qty.group(2).strip()
+                if m_qty:
+                    it_qty_resolved = resolve_product_name(it_qty, conn=conn)
+                    try:
+                        res = update_bill_item(row["id"], it_qty_resolved, n_qty, conn=conn)
+                        final_tot = res.get("bill_totals", {}).get("grand_total", 0.0)
+                        tools_called.append({"tool": "update_bill_item", "arguments": {"bill_id": row["id"], "product_query": it_qty_resolved, "new_quantity": n_qty}, "result": res})
+                        action_notes.append(f"• Updated *{it_qty_resolved}* quantity to **{n_qty}**")
+                    except Exception:
+                        pass
+            if tools_called:
+                reply = f"📝 Bill updated successfully:\n" + "\n".join(action_notes) + f"\n\n• New Grand Total: **₹{final_tot:.2f}**."
+                return reply, tools_called
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 15. Single update quantity: "make it 6 Maggi" / "change Maggi to 6"
     # ─────────────────────────────────────────────────────────────────────────
     m = re.search(r"^(?:make\s+it|change\s+it\s+to|change|update)\s+(\d+(?:\.\d+)?)\s*(?:kg|pkts?|packets?)?\s*(.+)$", msg_lower)
     if not m:
@@ -353,7 +417,7 @@ def try_fast_path(
                 return f"⚠️ Could not update item: {str(exc)}", []
 
     # ─────────────────────────────────────────────────────────────────────────
-    # 15. Drop item from draft bill: "drop the <item>" / "remove <item>"
+    # 16. Single drop item: "drop the <item>" / "remove <item>"
     # ─────────────────────────────────────────────────────────────────────────
     m = re.search(r"^(?:drop\s+the|remove\s+the|remove|drop)\s+(.+?)$", msg_lower)
     if m:
@@ -369,5 +433,25 @@ def try_fast_path(
                 return reply, [{"tool": "remove_bill_item", "arguments": {"bill_id": row["id"], "product_query": exact_name}, "result": updated_bill}]
             except Exception as exc:
                 return f"⚠️ Could not remove item: {str(exc)}", []
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 17. New item inquiry: "new item: Amul Butter 100g, GST 12%, MRP ₹62"
+    # ─────────────────────────────────────────────────────────────────────────
+    m_new = re.search(r"^(?:new\s+item|new\s+product|add\s+item|add\s+product):\s*(.+)$", msg_lower)
+    if m_new:
+        body = m_new.group(1).strip()
+        parts = [p.strip() for p in body.split(",") if p.strip()]
+        prod_name = parts[0] if parts else ""
+        cur = conn.cursor()
+        exact_row = cur.execute("SELECT * FROM products WHERE LOWER(name) LIKE LOWER(?)", (f"%{prod_name}%",)).fetchone()
+        if exact_row:
+            reply = (
+                f"🏷️ Product *'{exact_row['name']}'* is verified in your catalog:\n"
+                f"• SKU: `{exact_row['sku']}`\n"
+                f"• MRP: ₹{exact_row['mrp']:.2f} | Selling Price: ₹{exact_row['selling_price']:.2f} | Cost: ₹{exact_row['cost_price']:.2f}\n"
+                f"• GST Rate: {exact_row['gst_rate']}% (HSN: `{exact_row['hsn_code']}`)\n"
+                f"Ready for billing and stock intake!"
+            )
+            return reply, [{"tool": "get_product", "arguments": {"query": prod_name}, "result": dict(exact_row)}]
 
     return None
