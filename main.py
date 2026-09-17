@@ -312,17 +312,16 @@ def _anti_spam_guardian(token: str) -> None:
     clean_short = "Supermarket Ops Assistant: billing, stock, khata & GST invoices."
     base = f"https://api.telegram.org/bot{token}"
 
+    # Run check immediately, then loop every 30 seconds
     while True:
         try:
-            time.sleep(120)  # Check every 2 minutes
             req = urllib.request.Request(f"{base}/getMyDescription")
             with urllib.request.urlopen(req, timeout=10) as r:
                 curr = json.loads(r.read()).get("result", {}).get("description", "")
 
-            # Detect spam links or keywords
-            spam_triggers = ["porn", "sex", "nude", "t.me/", "http", "🔞", "🔥", "nudevista", "genersex", "sexprobot"]
-            if any(w in curr.lower() for w in spam_triggers):
-                logger.warning(f"Spam description detected in Telegram: {curr!r} — overwriting immediately!")
+            # If description does not match our official store description, overwrite immediately
+            if curr.strip() != clean_desc.strip():
+                logger.warning(f"Unauthorized description detected: {curr[:50]!r}... — enforcing clean description!")
                 data = urllib.parse.urlencode({"description": clean_desc}).encode()
                 req_fix = urllib.request.Request(f"{base}/setMyDescription", data=data, method="POST")
                 with urllib.request.urlopen(req_fix, timeout=10) as r:
@@ -332,9 +331,11 @@ def _anti_spam_guardian(token: str) -> None:
                 req_short = urllib.request.Request(f"{base}/setMyShortDescription", data=data_short, method="POST")
                 with urllib.request.urlopen(req_short, timeout=10) as r:
                     pass
-                logger.info("Spam wiped and clean kirana description restored.")
+                logger.info("Enforced clean store description.")
         except Exception as exc:
             logger.debug(f"Anti-spam guardian error: {exc}")
+
+        time.sleep(30)  # Check every 30 seconds
 
 
 async def post_init_setup(application: Application) -> None:
