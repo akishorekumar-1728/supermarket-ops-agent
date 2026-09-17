@@ -10,51 +10,45 @@ An autonomous AI operations assistant for Indian kirana stores and supermarkets.
 [![Render](https://img.shields.io/badge/Deployed%20on-Render-46E3B7?logo=render)](https://render.com)
 [![Database](https://img.shields.io/badge/SQLite-WAL%20Mode-lightgrey?logo=sqlite)](https://sqlite.org)
 
-> 📌 **Official Submission Package**:  
-> For full technical grading criteria, harness rationale, capability surface, hard problem solutions, and sample PDF/PPTX outputs, read the [**Project Submission Report (`submission/SUBMISSION_REPORT.md`)**](submission/SUBMISSION_REPORT.md).
-
 ---
 
-## 🆕 Recent Updates & Enhancements
+## 📦 Official Project Submission Deliverables
 
-| # | Feature / Fix | Detail |
+| Deliverable | Location | Description |
 |---|---|---|
-| 1 | **Upgraded LLM: Gemini 3.6 Flash** | Migrated to Google's latest active model `gemini-3.6-flash` with automatic fallback |
-| 2 | **Automatic 10-Key Rotation** | `GEMINI_API_KEYS` rotates across 10 API keys instantly when quota/token limits hit |
-| 3 | **Stateful Chat Transfer** | Conversation context (`chat.history`) preserved across key switches with zero data loss |
-| 4 | **Render Cloud Deployment** | Lightweight HTTP server on `$PORT` with `do_HEAD` & self-pinger to prevent free-tier sleep |
-| 5 | **Smart Unit Normalization** | Intelligently resolves spacing variations (`5 kg` vs `5kg`, `70 g` vs `70g`, `1 l` vs `1l`) |
-| 6 | **Bot Integrity Guard** | Automatically enforces clean business descriptions and registered commands on startup |
-| 7 | **Speed Optimization** | Sub-10ms deterministic fast-path for common kirana operations (< 5ms response time) |
+| 🤖 **Live Telegram Bot** | [@supermarket_ops_nebula_bot](https://t.me/supermarket_ops_nebula_bot) | Active 24/7 on Render cloud for reviewer interactive testing |
+| 📑 **Submission Report** | [`submission/SUBMISSION_REPORT.md`](submission/SUBMISSION_REPORT.md) | Exhaustive ~1-page report detailing architecture, tools, and hard problems |
+| 📄 **Project Document** | [`submission/Nebula.doc.docx`](submission/Nebula.doc.docx) | Word document submission file |
+| 🧾 **Sample GST Invoice** | [`submission/SAMPLE_GST_INVOICE.pdf`](submission/SAMPLE_GST_INVOICE.pdf) | Generated ReportLab PDF tax invoice with itemized CGST/SGST splits |
+| 📊 **Sample Sales Deck** | [`submission/SAMPLE_SALES_ANALYSIS_DECK.pptx`](submission/SAMPLE_SALES_ANALYSIS_DECK.pptx) | Generated PowerPoint sales presentation with embedded charts |
 
 ---
 
-## 📋 Kirana Operations & Example Messages
+## 🧪 5-Minute Scenario Walkthrough for Reviewers
 
-The agent understands natural kirana store language — no rigid commands required:
+Reviewers can drive the live bot through the complete operational lifecycle in Telegram:
 
-| Intent | Example Message | What the Agent Does | Response Time |
+| Step | Action | Type in Telegram | What the Agent Does |
 |---|---|---|---|
-| **Receive stock** | `50 packets of Maggi came in, cost ₹12, MRP ₹14` | Adds 50 pkts to stock; updates cost & MRP | ~15 ms |
-| **Add new product** | `new item: Amul Butter 100g, GST 12%, MRP ₹62` | Registers in catalog with HSN, GST slab | ~2 ms |
-| **Cut a bill** | `make a bill: 2kg sugar, 1 Aashirvaad atta 5kg, 4 Maggi, UPI` | Opens draft bill with CGST + SGST split | ~6 ms |
-| **Edit bill mid-way** | `drop the butter, make it 6 Maggi` | Removes item, updates quantity, recalculates | ~2 ms |
-| **Stock query** | `how much sugar is left?` | Instant stock check with low-stock alert | ~1 ms |
-| **Low-stock / reorder** | `what's running out?` | Lists products at or below reorder level | ~0.2 ms |
-| **Khata credit** | `put ₹500 on Ramesh's credit` · `Ramesh paid ₹300` · `Ramesh's balance?` | Auto-registers customer, tracks debt/payment | ~0.5 ms |
-| **Daily close** | `today's sales?` or `close the day` | Total sales, GST collected, cash vs UPI | ~0.8 ms |
-| **Invoice PDF** | `send me that bill as a PDF` | GST-compliant PDF invoice sent to Telegram | ~44 ms |
-| **Analysis deck** | `make this week's sales analysis deck` | PowerPoint `.pptx` with charts sent to Telegram | ~300 ms |
-| **Set preference** | `always assume UPI unless I say cash` | Persists across sessions; resolves aliases | ~0.4 ms |
-
-> **Ambiguity Guard**: When a query is ambiguous (e.g. `add atta` when multiple brands exist), the agent asks a clarifying question rather than guessing.
+| 1 | **Start** | `/start` | Welcomes user & displays operational capability overview |
+| 2 | **Receive Stock** | `50 packets of Maggi came in, cost ₹12, MRP ₹14` | Atomically increments stock by 50, updates landed cost & MRP |
+| 3 | **Receive Stock (Fuzzy)** | `20 packets of Aashirvaad Atta 5kg arrived, cost ₹280, MRP ₹320` | Resolves spacing variant (`5 kg` $\rightarrow$ `5kg`), updates inventory |
+| 4 | **Multi-Item Bill** | `make a bill: 2kg sugar, 1 Aashirvaad atta 5kg, 4 Maggi, UPI` | Draft bill created with statutory 50/50 CGST + SGST tax split |
+| 5 | **Mid-Build Edit** | `drop the sugar, make it 6 Maggi` | Modifies draft in one turn: removes sugar, sets Maggi to 6 |
+| 6 | **Finalize Bill** | `finalize the bill` | Atomically deducts inventory, locks bill, assigns `INV-XXXXX` |
+| 7 | **Oversell Guard** | `make a bill: 500 Maggi, cash` | **Rejected by Oversell Guard**: requested quantity exceeds stock |
+| 8 | **Khata Credit** | `put ₹750 on Ramesh's credit` | Registers customer automatically, logs credit debt to ledger |
+| 9 | **Khata Payment** | `Ramesh paid ₹300` | Records partial payment, returns remaining balance (₹450) |
+| 10 | **Invoice PDF** | `send me that bill as a PDF` | Delivers high-res GST Tax Invoice PDF directly in chat |
+| 11 | **Sales Deck** | `make this week's sales analysis deck` | Delivers 6-slide PowerPoint `.pptx` deck with charts |
+| 12 | **Store Preference** | `always assume UPI unless I say cash` | Saves preference permanently in SQLite memory |
+| 13 | **Session Memory** | `/new` then `make a bill: 2 Maggi, 1kg sugar` | Fresh chat created; auto-applies stored UPI preference |
 
 ---
 
-## ⚡ Architecture & Latency Engine
+## ⚡ Architecture & Control Loop
 
 ### Two-Tier Execution Engine
-
 ```text
 Shopkeeper (Telegram)
         │
@@ -79,23 +73,38 @@ Shopkeeper (Telegram)
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-### Automatic 10-Key Rotation System
-- **`GEMINI_API_KEYS`** accepts a comma-separated list of Gemini API keys.
-- When any key exhausts request limits (`429`, `ResourceExhausted`, daily/minute token caps), the agent **catches the error in milliseconds**, switches to the next active key, and transparently retries the turn.
-- Active message history (`chat.history`) is transferred directly to the new session to prevent state loss.
+### 1. Harness Rationale
+* **Zero-Latency Fast Path**: Supermarket counters cannot wait 3–5 seconds for simple stock lookups or intake. The deterministic engine matches common operational intents via regex and executes in **0.1 to 15 milliseconds**.
+* **Google Gemini 3.6 Flash**: Fast, cloud-native reasoning with clean function-calling schemas for multi-item billing and complex conversational edits.
+* **Automatic 10-Key Failover**: Free-tier API keys hit RPM/TPM caps during peak testing. The agent rotates across 10 keys in `< 500ms`, transparently migrating `chat.history` so no conversation context is lost.
 
 ---
 
-## 🛡️ Enterprise Safeguards
+## 🛠️ Capability Surface: Skills & Tools
 
-| Safeguard | Implementation |
-|---|---|
-| **Statutory GST Calculator** | Pure Python: 0%, 5%, 12%, 18%, 28% slabs with 50/50 CGST+SGST split |
-| **Atomic Finalization** | Serialized `BEGIN IMMEDIATE` SQLite transactions in WAL mode |
-| **Oversell Guard** | Aborts checkout and rolls back if requested quantity exceeds stock |
-| **Below-Cost Guard** | Rejects any sale where selling price is lower than cost price |
-| **Idempotency** | Unique idempotency key prevents double inventory deduction on retries |
-| **Multi-Key Failover** | Auto-rotates Gemini API keys on token or rate limit errors |
+| Module | Core Tool Functions | Capability Description |
+|---|---|---|
+| **Products** | `add_product`, `get_product` | HSN code validation, statutory GST slabs (0%, 5%, 12%, 18%, 28%), fuzzy SKU search |
+| **Inventory** | `receive_stock`, `get_stock`, `get_low_stock` | Atomic stock intake, reorder alerts ranked by shortfall urgency |
+| **Billing** | `create_bill`, `add_bill_item`, `remove_bill_item`, `update_bill_item`, `finalize_bill` | Draft billing, item modification, atomic stock deduction, invoice numbering |
+| **Khata** | `create_credit`, `record_credit_payment`, `get_credit_balance` | Customer debt tracking, partial repayment, overpayment rejection |
+| **Analytics** | `daily_summary` | Revenue aggregates, GST split (CGST vs SGST), payment breakdown, top items |
+| **Preferences** | `set_preference`, `get_preference` | Key-value store memory for payment defaults and shorthand product aliases |
+| **Documents** | `generate_invoice_pdf`, `generate_sales_deck` | ReportLab GST PDF invoices and python-pptx sales analysis decks with charts |
+
+---
+
+## 🛡️ Engineering Solutions for Core Hard Problems
+
+| Hard Problem | Challenge | How We Solved It |
+|---|---|---|
+| **GST Calculation** | LLMs hallucinate tax percentages and rounding math | Computed in deterministic pure Python ([`tools/gst.py`](tools/gst.py)) with exact 50/50 CGST + SGST splits |
+| **Oversell Prevention** | Preventing inventory over-allocation during busy hours | Draft bills **never deduct stock**. Finalization executes atomically inside a `BEGIN IMMEDIATE` transaction; aborts if stock < requested |
+| **Below-Cost Protection** | Accidental price entry selling below store cost | Checkout validates `selling_price >= cost_price` for every line item before commit |
+| **Idempotency** | Duplicate clicks/network retries double-deducting stock | `finalize_bill` requires a unique `idempotency_key`; repeats return existing invoice without touching stock |
+| **API Quota Caps** | Free-tier Gemini keys hitting token/rate limits | Multi-key failover manager automatically rotates across 10 API keys in under 500ms with state preservation |
+| **Render Cloud Sleep** | Render free tier spinning down after 15 min inactivity | Background daemon in [`main.py`](main.py) periodically self-pings the application URL every 10 min |
+| **Unit Normalization** | Mismatches between `5 kg` and `5kg` | Regex normalizer collapses unit spacing in search queries before database lookup |
 
 ---
 
@@ -114,16 +123,15 @@ pip install -r requirements.txt
 ```
 
 ### 2. Configure Environment (`.env`)
-Copy `.env.example` to `.env`:
 ```bash
 cp .env.example .env
 ```
-Configure your credentials:
+Edit `.env`:
 ```env
-TELEGRAM_BOT_TOKEN=<YOUR_TELEGRAM_BOT_TOKEN>
+TELEGRAM_BOT_TOKEN=<your_telegram_bot_token>
 
 # Comma-separated list of Gemini API keys for automatic quota rotation
-GEMINI_API_KEYS=your_key_1,your_key_2,your_key_3,...
+GEMINI_API_KEYS=key1,key2,key3,...
 
 GEMINI_MODEL=gemini-3.6-flash
 ```
@@ -131,10 +139,10 @@ GEMINI_MODEL=gemini-3.6-flash
 ### 3. Seed Database & Run Tests
 ```bash
 python database/import_dataset.py   # Seeds products & initial customer khata
-python -m pytest tests/ -v          # Runs automated test suite
+python -m pytest tests/ -v          # Runs all 80+ automated unit tests
 ```
 
-### 4. Run the Bot
+### 4. Start the Bot
 ```bash
 python main.py
 ```
@@ -145,19 +153,15 @@ Open Telegram and message **[@supermarket_ops_nebula_bot](https://t.me/supermark
 ## ☁️ Deploy to Render
 
 1. Push your repository to GitHub.
-2. Log in to [render.com](https://render.com) $\rightarrow$ **New Web Service** $\rightarrow$ Connect your repository.
-3. Configure service parameters:
-   - **Environment**: `Python 3`
+2. In [render.com](https://render.com) $\rightarrow$ **New Web Service** $\rightarrow$ Connect repository.
+3. Configure settings:
+   - **Environment**: `Python 3` (Render uses `.python-version` pinned to `3.11.9`)
    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `python main.py`
-4. Add **Environment Variables** in Render settings:
-
-| Variable | Value |
-|---|---|
-| `TELEGRAM_BOT_TOKEN` | your bot token from @BotFather |
-| `GEMINI_API_KEYS` | `key1,key2,key3,...` (comma-separated keys) |
-| `GEMINI_MODEL` | `gemini-3.6-flash` |
-
+4. Set Environment Variables:
+   - `TELEGRAM_BOT_TOKEN` = your bot token from @BotFather
+   - `GEMINI_API_KEYS` = comma-separated Gemini API keys
+   - `GEMINI_MODEL` = `gemini-3.6-flash`
 5. Click **Deploy Web Service** ✅.
 
 ---
@@ -166,6 +170,11 @@ Open Telegram and message **[@supermarket_ops_nebula_bot](https://t.me/supermark
 
 ```text
 supermarket-ops-agent/
+├── submission/             # Official submission folder
+│   ├── SUBMISSION_REPORT.md# Exhaustive ~1-page submission report
+│   ├── Nebula.doc.docx     # Project document
+│   ├── SAMPLE_GST_INVOICE.pdf
+│   └── SAMPLE_SALES_ANALYSIS_DECK.pptx
 ├── agent/
 │   ├── agent.py            # Gemini 3.6 function-calling loop & 10-key rotation
 │   ├── fast_path.py        # Zero-latency sub-10ms deterministic execution
@@ -209,3 +218,4 @@ supermarket-ops-agent/
 
 - **GitHub Repository**: [akishorekumar-1728/supermarket-ops-agent](https://github.com/akishorekumar-1728/supermarket-ops-agent)
 - **Live Telegram Bot**: [@supermarket_ops_nebula_bot](https://t.me/supermarket_ops_nebula_bot)
+- **Official Submission Report**: [`submission/SUBMISSION_REPORT.md`](submission/SUBMISSION_REPORT.md)
