@@ -21,11 +21,30 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import time
+from collections import defaultdict
 from pathlib import Path
 
 # Ensure UTF-8 stdout on Windows
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
+
+# ---------------------------------------------------------------------------
+# Spam / security configuration
+# ---------------------------------------------------------------------------
+# Patterns that identify spam / promotional messages (case-insensitive)
+SPAM_PATTERNS = [
+    "t.me/+", "t.me/@",
+    "nudevista", "sexprobot", "genersex",
+    "porn", " sex ", "nude", "xxx", "adult18",
+    "casino", "bet365", "crypto invest", "earn money fast",
+    "click here", "free bitcoin", "claim reward",
+]
+
+# Per-user rate limiting: max 10 messages in 30 seconds
+RATE_LIMIT_MAX = 10
+RATE_LIMIT_WINDOW = 30  # seconds
+_user_message_times: dict[int, list[float]] = defaultdict(list)
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
@@ -165,8 +184,48 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not update.message or not update.message.text:
         return
 
+    # ------------------------------------------------------------------
+    # Security layer 1: reject messages sent by other bots
+    # ------------------------------------------------------------------
+    sender = update.effective_user
+    if sender and sender.is_bot:
+        logger.warning(f"Ignored message from bot user_id={sender.id} (@{sender.username})")
+        return
+
     chat_id = update.effective_chat.id
+    user_id = sender.id if sender else chat_id
     user_text = update.message.text.strip()
+
+    # ------------------------------------------------------------------
+    # Security layer 2: block spam / promotional content
+    # ------------------------------------------------------------------
+    text_lower = user_text.lower()
+    for pattern in SPAM_PATTERNS:
+        if pattern in text_lower:
+            logger.warning(
+                f"Blocked spam from user_id={user_id} chat_id={chat_id}: pattern='{pattern}'"
+            )
+            # Silently drop — do NOT reply (replying rewards spammers)
+            return
+
+    # ------------------------------------------------------------------
+    # Security layer 3: rate limiting (10 msgs / 30 sec per user)
+    # ------------------------------------------------------------------
+    now = time.time()
+    timestamps = _user_message_times[user_id]
+    # Expire old entries outside the window
+    _user_message_times[user_id] = [t for t in timestamps if now - t < RATE_LIMIT_WINDOW]
+    if len(_user_message_times[user_id]) >= RATE_LIMIT_MAX:
+        logger.warning(f"Rate-limited user_id={user_id}")
+        await update.message.reply_text(
+            "⚠️ You're sending messages too fast. Please wait a moment."
+        )
+        return
+    _user_message_times[user_id].append(now)
+
+    # ------------------------------------------------------------------
+    # Normal processing
+    # ------------------------------------------------------------------
     history = CHAT_HISTORIES.get(chat_id, [])
 
     # Send typing indicator
