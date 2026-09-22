@@ -224,11 +224,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     _user_message_times[user_id].append(now)
 
     # ------------------------------------------------------------------
-    # Normal processing
+    # Normal processing — typing indicator first (instant feedback)
     # ------------------------------------------------------------------
     history = CHAT_HISTORIES.get(chat_id, [])
 
-    # Send typing indicator
+    # Send typing indicator immediately so user knows bot is alive
     await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
 
     # Open persistent database connection for this turn
@@ -240,7 +240,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             conversation_history=history,
             conn=conn,
             model=GEMINI_MODEL,
-            timeout=300,
+            timeout=30,   # 30s max — fail fast rather than hanging
         )
         CHAT_HISTORIES[chat_id] = updated_history
 
@@ -459,7 +459,7 @@ def main() -> None:
 
     print(f"Starting Supermarket Ops Telegram Bot (@supermarket_ops_nebula_bot)...")
     print(f"AI Model: {GEMINI_MODEL} (Google Gemini) | DB: {DB_PATH}")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling(drop_pending_updates=False, poll_interval=1.0)
 
 
 if __name__ == "__main__":
