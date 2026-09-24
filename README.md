@@ -102,6 +102,8 @@ Shopkeeper (Telegram)
 | **Oversell Prevention** | Preventing inventory over-allocation during busy hours | Draft bills **never deduct stock**. Finalization executes atomically inside a `BEGIN IMMEDIATE` transaction; aborts if stock < requested |
 | **Below-Cost Protection** | Accidental price entry selling below store cost | Checkout validates `selling_price >= cost_price` for every line item before commit |
 | **Idempotency** | Duplicate clicks/network retries double-deducting stock | `finalize_bill` requires a unique `idempotency_key`; repeats return existing invoice without touching stock |
+| **Anti-Spam & Channel Security** | Compromised/scraped bot tokens and channel ad spam | Multi-layer shield: background daemon auto-enforces clean metadata, channel post interceptor auto-deletes spam & leaves unauthorized channels, Cyrillic/OSINT regex filter |
+| **Sub-2s Fast Response** | LLM latency causing slow checkout at store counters | Deterministic fast-path regex engine resolves common operations in <15ms; polling interval set to 1.0s with instant typing indicator |
 | **API Quota Caps** | Free-tier Gemini keys hitting token/rate limits | Multi-key failover manager automatically rotates across 10 API keys in under 500ms with state preservation |
 | **Render Cloud Sleep** | Render free tier spinning down after 15 min inactivity | Background daemon in [`main.py`](main.py) periodically self-pings the application URL every 10 min |
 | **Unit Normalization** | Mismatches between `5 kg` and `5kg` | Regex normalizer collapses unit spacing in search queries before database lookup |
