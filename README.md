@@ -217,7 +217,7 @@ supermarket-ops-agent/
 ---
 
 ## 👤 Author & Links
-
+- A KISHORE KUMAR
 - **GitHub Repository**: [akishorekumar-1728/supermarket-ops-agent](https://github.com/akishorekumar-1728/supermarket-ops-agent)
 - **Live Telegram Bot**: [@supermarket_ops_nebula_bot](https://t.me/supermarket_ops_nebula_bot)
 - **Official Submission Report**: [`submission/SUBMISSION_REPORT.md`](submission/SUBMISSION_REPORT.md)
