@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 import time
 from collections import defaultdict
@@ -34,12 +35,40 @@ if hasattr(sys.stdout, "reconfigure"):
 # ---------------------------------------------------------------------------
 # Patterns that identify spam / promotional messages (case-insensitive)
 SPAM_PATTERNS = [
-    "t.me/+", "t.me/@",
+    "t.me/+", "t.me/@", "t.me/", "telegram.me/", "tg://join",
     "nudevista", "sexprobot", "genersex",
     "porn", " sex ", "nude", "xxx", "adult18",
     "casino", "bet365", "crypto invest", "earn money fast",
-    "click here", "free bitcoin", "claim reward",
+    "click here", "free bitcoin", "claim reward", "airdrop", "giveaway",
+    # Russian / Telegram OSINT / advertising spam keywords
+    "пробив", "бесплатно", "паспорт", "госномер", "поиск человека",
+    "глаз бога", "слив", "подпишись", "канал", "в боте", "бот для",
+    "новости", "скидк", "крипт", "заработ",
 ]
+
+CYRILLIC_REGEX = re.compile(r'[\u0400-\u04FF]')
+
+
+def is_spam_text(text: str) -> tuple[bool, str]:
+    """
+    Check if a text message is spam or unwanted promotional content.
+    Returns (is_spam, reason).
+    """
+    if not text:
+        return False, ""
+
+    # 1. Cyrillic characters (Russian, Ukrainian, etc. - 100% spam for Indian kirana store bot)
+    if CYRILLIC_REGEX.search(text):
+        return True, "Cyrillic/Russian text detected"
+
+    # 2. Known spam pattern matching
+    text_lower = text.lower()
+    for pattern in SPAM_PATTERNS:
+        if pattern in text_lower:
+            return True, f"Spam pattern matched: '{pattern}'"
+
+    return False, ""
+
 
 # Per-user rate limiting: max 10 messages in 30 seconds
 RATE_LIMIT_MAX = 10
@@ -179,6 +208,33 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle posts in channels where the bot is added, deleting spam immediately."""
+    post = update.channel_post or update.edited_channel_post
+    if not post:
+        return
+
+    chat_id = post.chat_id
+    msg_id = post.message_id
+    text = post.text or post.caption or ""
+
+    is_spam, reason = is_spam_text(text)
+    if is_spam:
+        logger.warning(f"Deleting spam in channel {chat_id} (msg {msg_id}): {reason}")
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+            logger.info(f"Successfully deleted spam post {msg_id} in channel {chat_id}")
+        except Exception as e:
+            logger.debug(f"Could not delete channel spam: {e}")
+        try:
+            # Leave unwanted spam channels immediately
+            await context.bot.leave_chat(chat_id=chat_id)
+            logger.warning(f"Left spam channel {chat_id}")
+        except Exception as e:
+            logger.debug(f"Could not leave channel {chat_id}: {e}")
+        return
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Process user message through agent control loop."""
     if not update.message or not update.message.text:
@@ -192,21 +248,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         logger.warning(f"Ignored message from bot user_id={sender.id} (@{sender.username})")
         return
 
-    chat_id = update.effective_chat.id
+    chat = update.effective_chat
+    chat_id = chat.id if chat else 0
     user_id = sender.id if sender else chat_id
     user_text = update.message.text.strip()
 
     # ------------------------------------------------------------------
-    # Security layer 2: block spam / promotional content
+    # Security layer 2: block and auto-delete spam / promotional content
     # ------------------------------------------------------------------
-    text_lower = user_text.lower()
-    for pattern in SPAM_PATTERNS:
-        if pattern in text_lower:
-            logger.warning(
-                f"Blocked spam from user_id={user_id} chat_id={chat_id}: pattern='{pattern}'"
-            )
-            # Silently drop — do NOT reply (replying rewards spammers)
-            return
+    is_spam, reason = is_spam_text(user_text)
+    if is_spam:
+        logger.warning(
+            f"Blocked spam from user_id={user_id} in {getattr(chat, 'type', 'unknown')} chat_id={chat_id}: {reason}"
+        )
+        if chat and chat.type in ("group", "supergroup", "channel"):
+            try:
+                await update.message.delete()
+                logger.info(f"Deleted spam message from chat {chat_id}")
+            except Exception as e:
+                logger.debug(f"Could not delete spam message: {e}")
+        # Silently drop — do NOT reply (replying rewards spammers)
+        return
 
     # ------------------------------------------------------------------
     # Security layer 3: rate limiting (10 msgs / 30 sec per user)
@@ -455,6 +517,8 @@ def main() -> None:
     app.add_handler(CommandHandler("reset", reset_command))
     app.add_handler(CommandHandler("clear", reset_command))
     app.add_handler(CommandHandler("new", reset_command))
+    # Intercept all channel posts to purge spam and leave spam channels
+    app.add_handler(MessageHandler(filters.ChatType.CHANNEL, handle_channel_post))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print(f"Starting Supermarket Ops Telegram Bot (@supermarket_ops_nebula_bot)...")
