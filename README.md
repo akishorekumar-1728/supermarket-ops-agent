@@ -1,6 +1,6 @@
 # 🛒 Supermarket Ops Agent — Nebula Bot
 
-An autonomous AI operations assistant for Indian kirana stores and supermarkets. Through natural language in Telegram, the agent handles product cataloging, stock intake, multi-item billing with automated GST calculation, customer credit ledgers (khata), daily analytics, and professional PDF/PPTX document generation — powered by **Google Gemini 3.6 Flash** and deployed on **Render**.
+AI-powered local-first supermarket operations agent for Indian kirana stores, supporting natural-language inventory, GST billing, customer khata, sales analytics, PDF invoices, and Telegram automation — powered by **Google Gemini 3.6 Flash** and deployed live on **Render**.
 
 [![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-blue?logo=github)](https://github.com/akishorekumar-1728/supermarket-ops-agent)
 [![Telegram Bot](https://img.shields.io/badge/Telegram-@supermarket__ops__nebula__bot-2CA5E0?logo=telegram)](https://t.me/supermarket_ops_nebula_bot)
